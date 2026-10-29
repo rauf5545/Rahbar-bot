@@ -1,0 +1,68 @@
+name: W-Bot07 (Rahbar Realms WhatsApp Inquiry Agent)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Runs every 5 hours (GitHub Actions is NOT a 24/7 host; see notes)
+    - cron: "0 */5 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: w-bot07
+  cancel-in-progress: false
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350   # Stay under the 6-hour job limit
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Restore Baileys auth session
+        # Only works if you committed/uploaded auth_info as a secret or artifact.
+        # See SETUP notes. Without it, pairing must have happened beforehand.
+        env:
+          AUTH_INFO_B64: ${{ secrets.AUTH_INFO_B64 }}
+        run: |
+          mkdir -p auth_info
+          if [ -n "$AUTH_INFO_B64" ]; then
+            echo "Restoring auth_info from secret..."
+            echo "$AUTH_INFO_B64" | base64 -d > /tmp/auth_info.tar.gz
+            tar -xzf /tmp/auth_info.tar.gz -C auth_info
+            echo "auth_info restored."
+          else
+            echo "::warning::AUTH_INFO_B64 not set — bot will attempt to pair, which requires a human. It will not connect unattended."
+          fi
+
+      - name: Start bot (bounded run)
+        env:
+          OWNER_ALERT_NUMBER: ${{ secrets.OWNER_ALERT_NUMBER }}
+          AUTH_DIR: "auth_info"
+          INQUIRY_LOG_PATH: "inquiries.jsonl"
+          LOG_LEVEL: "info"
+        run: |
+          # Run for ~5h50m then exit gracefully so the job stays under limits.
+          # The bot itself keeps running; we kill it with timeout.
+          timeout --signal=SIGTERM 21000 node index.js || echo "Bot exited (timeout or normal shutdown)"
+
+      - name: Upload inquiry log (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inquiries-${{ github.run_id }}
+          path: inquiries.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
