@@ -3,7 +3,6 @@ name: W-Bot07 (Rahbar Realms WhatsApp Inquiry Agent)
 on:
   workflow_dispatch:
   schedule:
-    # Runs every 5 hours (GitHub Actions is NOT a 24/7 host; see notes)
     - cron: "0 */5 * * *"
 
 permissions:
@@ -16,7 +15,7 @@ concurrency:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 350   # Stay under the 6-hour job limit
+    timeout-minutes: 350
 
     steps:
       - name: Checkout repository
@@ -25,15 +24,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: "22"
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
       - name: Restore Baileys auth session
-        # Only works if you committed/uploaded auth_info as a secret or artifact.
-        # See SETUP notes. Without it, pairing must have happened beforehand.
         env:
           AUTH_INFO_B64: ${{ secrets.AUTH_INFO_B64 }}
         run: |
@@ -54,8 +50,6 @@ jobs:
           INQUIRY_LOG_PATH: "inquiries.jsonl"
           LOG_LEVEL: "info"
         run: |
-          # Run for ~5h50m then exit gracefully so the job stays under limits.
-          # The bot itself keeps running; we kill it with timeout.
           timeout --signal=SIGTERM 21000 node index.js || echo "Bot exited (timeout or normal shutdown)"
 
       - name: Upload inquiry log (artifact)
